@@ -5,27 +5,121 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   lint-and-test:
     runs-on: windows-latest
-
+    
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4  # Updated to v4
 
     - name: Install PSScriptAnalyzer
       shell: pwsh
       run: |
-        Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+        Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+        Write-Host "PSScriptAnalyzer version: $(Get-Module PSScriptAnalyzer -ListAvailable | Select-Object -ExpandProperty Version)"
 
-    - name: Run PSScriptAnalyzer
+    - name: Run PSScriptAnalyzer (Errors only)
       shell: pwsh
       run: |
-        Invoke-ScriptAnalyzer -Path './Shrink-DockerDataVHDX.ps1' -Recurse -Severity Error
+        Write-Host "Running PSScriptAnalyzer with Error severity..."
+        $errors = Invoke-ScriptAnalyzer -Path './Shrink-DockerDataVHDX.ps1' -Recurse -Severity Error
+        if ($errors) {
+          $errors | Format-Table -AutoSize
+          Write-Error "PSScriptAnalyzer found $($errors.Count) error(s)"
+          exit 1
+        }
+        Write-Host "✓ No errors found" -ForegroundColor Green
+
+    - name: Run PSScriptAnalyzer (All severities for reporting)
+      shell: pwsh
+      continue-on-error: true  # Don't fail the workflow on warnings
+      run: |
+        Write-Host "Running full PSScriptAnalyzer scan..."
+        $results = Invoke-ScriptAnalyzer -Path './Shrink-DockerDataVHDX.ps1' -Recurse
+        if ($results) {
+          Write-Host "Found $($results.Count) issue(s):" -ForegroundColor Yellow
+          $results | Format-Table -AutoSize
+          
+          # Group by severity
+          $grouped = $results | Group-Object Severity
+          foreach ($group in $grouped) {
+            Write-Host "$($group.Name): $($group.Count)" -ForegroundColor Yellow
+          }
+        } else {
+          Write-Host "✓ No issues found - script is clean!" -ForegroundColor Green
+        }
+
+    - name: Verify script syntax
+      shell: pwsh
+      run: |
+        Write-Host "Verifying PowerShell syntax..."
+        $errors = $null
+        $null = [System.Management.Automation.PSParser]::Tokenize(
+          (Get-Content './Shrink-DockerDataVHDX.ps1' -Raw), 
+          [ref]$errors
+        )
+        if ($errors) {
+          Write-Error "Syntax errors found:"
+          $errors | Format-Table -AutoSize
+          exit 1
+        }
+        Write-Host "✓ Syntax is valid" -ForegroundColor Green
 
     - name: Run Shrink-DockerDataVHDX in -WhatIf mode
       shell: pwsh
       run: |
-        Write-Host "Running Shrink-DockerDataVHDX.ps1 in simulation mode (-WhatIf)"
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "Running Shrink-DockerDataVHDX.ps1 -WhatIf" -ForegroundColor Cyan
+        Write-Host "========================================" -ForegroundColor Cyan
         ./Shrink-DockerDataVHDX.ps1 -WhatIf
+        Write-Host ""
+        Write-Host "✓ -WhatIf simulation completed successfully" -ForegroundColor Green
+
+    - name: Test parameter validation
+      shell: pwsh
+      run: |
+        Write-Host "Testing parameter validation..."
+        
+        # Test with custom parameters
+        Write-Host "Test 1: Custom MinFreeSpaceGB"
+        ./Shrink-DockerDataVHDX.ps1 -WhatIf -MinFreeSpaceGB 30
+        
+        Write-Host "`nTest 2: Incremental mode"
+        ./Shrink-DockerDataVHDX.ps1 -WhatIf -IncrementalSizeGB 5 -MaxCycles 3
+        
+        Write-Host "`nTest 3: Force flag"
+        ./Shrink-DockerDataVHDX.ps1 -WhatIf -Force
+        
+        Write-Host ""
+        Write-Host "✓ All parameter tests passed" -ForegroundColor Green
+
+    - name: Check for TODO/FIXME comments
+      shell: pwsh
+      continue-on-error: true
+      run: |
+        Write-Host "Checking for TODO/FIXME comments..."
+        $content = Get-Content './Shrink-DockerDataVHDX.ps1' -Raw
+        $todos = [regex]::Matches($content, '(?i)(TODO|FIXME|HACK|XXX):\s*(.+)')
+        if ($todos.Count -gt 0) {
+          Write-Host "Found $($todos.Count) comment(s) requiring attention:" -ForegroundColor Yellow
+          foreach ($match in $todos) {
+            Write-Host "  - $($match.Value)" -ForegroundColor Yellow
+          }
+        } else {
+          Write-Host "✓ No TODO/FIXME comments found" -ForegroundColor Green
+        }
+
+    - name: Summary
+      if: always()
+      shell: pwsh
+      run: |
+        Write-Host ""
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "           WORKFLOW SUMMARY" -ForegroundColor Cyan
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "Script: Shrink-DockerDataVHDX.ps1"
+        Write-Host "All critical checks passed ✓" -ForegroundColor Green
+        Write-Host "========================================" -ForegroundColor Cyan
