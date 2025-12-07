@@ -37,8 +37,8 @@ if (-not (Test-Path $targetScript)) {
 Write-Host "Running PSScriptAnalyzer on $targetScript..." -ForegroundColor Cyan
 Write-Host "===========================================================" -ForegroundColor Cyan
 
-# Run the analyzer
-$results = Invoke-ScriptAnalyzer -Path $targetScript -Recurse
+# Run the analyzer (exclude PSAvoidUsingWriteHost - Write-Host is intentionally used for user-facing messages)
+$results = Invoke-ScriptAnalyzer -Path $targetScript -Recurse -ExcludeRule PSAvoidUsingWriteHost
 
 # Display results
 if ($results) {
@@ -47,9 +47,9 @@ if ($results) {
     Write-Host "===========================================================" -ForegroundColor Cyan
     
     # Summary
-    $errors = ($results | Where-Object { $_.Severity -eq 'Error' }).Count
-    $warnings = ($results | Where-Object { $_.Severity -eq 'Warning' }).Count
-    $infos = ($results | Where-Object { $_.Severity -eq 'Information' }).Count
+    $errors = ($results | Where-Object { $_.Severity -like '*Error*' }).Count
+    $warnings = ($results | Where-Object { $_.Severity -like '*Warning*' }).Count
+    $infos = ($results | Where-Object { $_.Severity -like '*Information*' }).Count
     
     Write-Host "Summary:" -ForegroundColor Yellow
     

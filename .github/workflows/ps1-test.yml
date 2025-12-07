@@ -1,4 +1,4 @@
-name: PowerShell Lint & Dry Run
+﻿name: PowerShell Lint & Dry Run
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
           Write-Error "PSScriptAnalyzer found $($errors.Count) error(s)"
           exit 1
         }
-        Write-Host "✓ No errors found" -ForegroundColor Green
+        Write-Host "âœ“ No errors found" -ForegroundColor Green
 
     - name: Run PSScriptAnalyzer (All severities for reporting)
       shell: pwsh
@@ -49,7 +49,7 @@ jobs:
             Write-Host "$($group.Name): $($group.Count)" -ForegroundColor Yellow
           }
         } else {
-          Write-Host "✓ No issues found - script is clean!" -ForegroundColor Green
+          Write-Host "âœ“ No issues found - script is clean!" -ForegroundColor Green
         }
 
     - name: Verify script syntax
@@ -66,7 +66,7 @@ jobs:
           $errors | Format-Table -AutoSize
           exit 1
         }
-        Write-Host "✓ Syntax is valid" -ForegroundColor Green
+        Write-Host "âœ“ Syntax is valid" -ForegroundColor Green
 
     - name: Run Shrink-DockerDataVHDX in -WhatIf mode
       shell: pwsh
@@ -76,7 +76,7 @@ jobs:
         Write-Host "========================================" -ForegroundColor Cyan
         ./Shrink-DockerDataVHDX.ps1 -WhatIf
         Write-Host ""
-        Write-Host "✓ -WhatIf simulation completed successfully" -ForegroundColor Green
+        Write-Host "âœ“ -WhatIf simulation completed successfully" -ForegroundColor Green
 
     - name: Test parameter validation
       shell: pwsh
@@ -88,13 +88,13 @@ jobs:
         ./Shrink-DockerDataVHDX.ps1 -WhatIf -MinFreeSpaceGB 30
         
         Write-Host "`nTest 2: Incremental mode"
-        ./Shrink-DockerDataVHDX.ps1 -WhatIf -IncrementalSizeGB 5 -MaxCycles 3
+        ./Shrink-DockerDataVHDX.ps1 -WhatIf -MaxIncrementalSizeGB 5 -MaxCycles 3
         
         Write-Host "`nTest 3: Force flag"
         ./Shrink-DockerDataVHDX.ps1 -WhatIf -Force
         
         Write-Host ""
-        Write-Host "✓ All parameter tests passed" -ForegroundColor Green
+        Write-Host "âœ“ All parameter tests passed" -ForegroundColor Green
 
     - name: Check for TODO/FIXME comments
       shell: pwsh
@@ -109,7 +109,7 @@ jobs:
             Write-Host "  - $($match.Value)" -ForegroundColor Yellow
           }
         } else {
-          Write-Host "✓ No TODO/FIXME comments found" -ForegroundColor Green
+          Write-Host "âœ“ No TODO/FIXME comments found" -ForegroundColor Green
         }
 
     - name: Summary
@@ -121,5 +121,5 @@ jobs:
         Write-Host "           WORKFLOW SUMMARY" -ForegroundColor Cyan
         Write-Host "========================================" -ForegroundColor Cyan
         Write-Host "Script: Shrink-DockerDataVHDX.ps1"
-        Write-Host "All critical checks passed ✓" -ForegroundColor Green
+        Write-Host "All critical checks passed âœ“" -ForegroundColor Green
         Write-Host "========================================" -ForegroundColor Cyan

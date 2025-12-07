@@ -1,8 +1,8 @@
-# Shrink-DockerDataVHDX
+﻿# Shrink-DockerDataVHDX
 
 > Compact Docker Desktop's VHDX safely on Windows with PowerShell automation.
 
-Reclaim disk space by compacting Docker Desktop's `docker_data.vhdx` safely through zero-filling free space inside the Docker WSL distro and then running a host-side compaction. This script **does not** install any distro — it uses Docker Desktop's built-in `docker-desktop` WSL distro.
+Reclaim disk space by compacting Docker Desktop's `docker_data.vhdx` safely through zero-filling free space inside the Docker WSL distro and then running a host-side compaction. This script **does not** install any distro â€” it uses Docker Desktop's built-in `docker-desktop` WSL distro.
 
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue.svg)](https://github.com/PowerShell/PowerShell)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -19,15 +19,17 @@ Reclaim disk space by compacting Docker Desktop's `docker_data.vhdx` safely thro
 - [How incremental mode works](#how-incremental-mode-works)
 - [Safety & Notes](#safety--notes)
 - [Troubleshooting](#troubleshooting)
+- [Changelog](#changelog)
 - [License](#license)
 
 ---
 
 ## What it does
 
-1. **Validates** the environment and checks host drive free space
-2. Optionally **simulates** the plan (`-WhatIf`) or prompts for confirmation (unless `-Force`)
-3. **Zero-fills** free space inside the Docker data disk using incremental cycles (write *N* GB at a time) or a single full zero-fill
+1. **Validates** the environment (WSL installed, Docker distro exists, VHDX accessible) and checks host drive free space
+2. **Analyzes** potential space savings before running (estimates reclaimable GB)
+3. Optionally **simulates** the plan (`-WhatIf`) or prompts for confirmation (unless `-Force`)
+4. **Zero-fills** free space inside the Docker data disk using incremental cycles (write *N* GB at a time) or a single full zero-fill
 4. **Shuts down** WSL so the VHDX is not in use
 5. **Compacts** the VHDX using `Optimize-VHD` (Hyper-V module) if available, otherwise falls back to `diskpart compact vdisk`
 6. **Displays comprehensive progress** with real-time updates, elapsed time tracking, and final summary statistics
@@ -40,7 +42,7 @@ Reclaim disk space by compacting Docker Desktop's `docker_data.vhdx` safely thro
 * **Docker Desktop** with WSL2 backend (includes the `docker-desktop` distro by default)
 * **Sufficient host free disk space** for temporary VHDX growth during zero-filling
   * Incremental mode available to limit peak space usage
-* **Optional**: Hyper-V PowerShell module for `Optimize-VHD` (recommended but not required — `diskpart` is used as fallback)
+* **Optional**: Hyper-V PowerShell module for `Optimize-VHD` (recommended but not required â€” `diskpart` is used as fallback)
 
 **Admin privileges:** The script automatically elevates itself when needed (except in `-WhatIf` simulation mode)
 
@@ -50,7 +52,7 @@ Reclaim disk space by compacting Docker Desktop's `docker_data.vhdx` safely thro
 
 1. Download or save the script as `Shrink-DockerDataVHDX.ps1`
 
-2. **No need to "Run as Administrator"** — the script will automatically elevate itself when needed
+2. **No need to "Run as Administrator"** â€” the script will automatically elevate itself when needed
 
 3. If your execution policy prevents running scripts, use:
 
@@ -71,26 +73,28 @@ powershell -ExecutionPolicy Bypass -File .\Shrink-DockerDataVHDX.ps1
 ## Usage
 
 ```powershell
-.\Shrink-DockerDataVHDX.ps1 [-MinFreeSpaceGB <int>] [-VhdxRelativePath <string>] 
-                            [-Force] [-WhatIf] [-IncrementalSizeGB <int>] [-MaxCycles <int>]
+.\Shrink-DockerDataVHDX.ps1 [-Mode <Interactive|Incremental|Full|Auto>] [-MinFreeSpaceGB <int>]
+                            [-VhdxRelativePath <string>] [-Force] [-WhatIf]
+                            [-MaxIncrementalSizeGB <int>] [-MaxCycles <int>]
 ```
 
 ### Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
+| `-Mode` | string | `Interactive` | Operation mode: `Interactive` (Menu), `Incremental`, `Full`, or `Auto`. |
 | `-MinFreeSpaceGB` | int | `20` | Minimum free space (GB) required on host drive before proceeding |
 | `-VhdxRelativePath` | string | `Docker\wsl\disk\docker_data.vhdx` | Path relative to `%LOCALAPPDATA%` |
-| `-Force` | switch | - | Skip the interactive `YES` confirmation prompt |
-| `-WhatIf` | switch | - | Simulation mode — show plan without making changes (no admin required) |
-| `-IncrementalSizeGB` | int | `0` | If `> 0`, write N GB per cycle and compact between cycles |
+| `-Force` | switch | - | Skip interactive prompts (confirmation & elevation). **Fails if not Admin.** |
+| `-WhatIf` | switch | - | Simulation mode â€” show plan without making changes (no admin required) |
+| `-MaxIncrementalSizeGB` | int | `0` | If `> 0`, write N GB per cycle and compact between cycles |
 | `-MaxCycles` | int | `10` | Maximum cycles to run in incremental mode |
 
 ---
 
 ## Examples
 
-### 1. Dry run (simulation) — No admin required
+### 1. Dry run (simulation) â€” No admin required
 
 ```powershell
 .\Shrink-DockerDataVHDX.ps1 -WhatIf
@@ -104,6 +108,16 @@ powershell -ExecutionPolicy Bypass -File .\Shrink-DockerDataVHDX.ps1
   MinFreeSpaceGB: 20
   Full-mode: write filler until disk full inside docker-desktop, then shutdown and compact
   Force: no
+[SIMULATION] Starting simulated execution...
+[SIM] Cycle 1 of 1 - Writing 25 GB (full mode)...
+[SIM] ✓ Compaction complete (simulated)
+========================================
+         COMPACTION COMPLETE (SIMULATED)
+========================================
+Initial VHDX size:  85.3 GB
+Final VHDX size:    85.3 GB (simulated)
+Space saved:        0 GB (0%) - simulation only
+========================================
 This is a simulation only; no actions were executed.
 ```
 
@@ -113,26 +127,60 @@ This is a simulation only; no actions were executed.
 .\Shrink-DockerDataVHDX.ps1
 ```
 
-The script will automatically request admin elevation (UAC prompt), then prompt:
+The script will analyze system conditions, show the recommended mode, then display a menu:
 ```
+[Auto-Select] Analyzing system conditions...
+  Free space: 45 GB
+  Minimum required: 20 GB
+  VHDX size: 60 GB
+[Auto-Select] → FULL MODE (Plenty of disk space - faster approach)
+
+Choose an option:
+1) Simulate Full mode
+2) Simulate Incremental mode
+3) Run Full mode (danger zone - requires admin)
+4) Run Incremental mode (safer - requires admin)
+5) Exit
+
 Type 'YES' to proceed, anything else to abort:
 ```
 
 ### 3. Force non-interactive full run
 
 ```powershell
-.\Shrink-DockerDataVHDX.ps1 -Force
+.\Shrink-DockerDataVHDX.ps1 -Mode Full -Force
 ```
 
-### 4. Incremental mode — 10 GB per cycle, up to 5 cycles
+### 4. Incremental mode â€” 10 GB per cycle, up to 5 cycles
 
 ```powershell
-.\Shrink-DockerDataVHDX.ps1 -IncrementalSizeGB 10 -MaxCycles 5 -Force
+.\Shrink-DockerDataVHDX.ps1 -Mode Incremental -MaxIncrementalSizeGB 10 -MaxCycles 5 -Force
 ```
 
 **Best for:** Systems with limited free space or when you want more control over the process.
 
-### 5. Custom VHDX location with lower safety threshold
+### 5. Auto mode - Let the script choose the best mode
+
+```powershell
+.\Shrink-DockerDataVHDX.ps1 -Mode Auto -WhatIf
+```
+
+**Auto mode intelligently selects:**
+- **Full mode** when you have plenty of disk space (> 2x MinFreeSpaceGB and > 50 GB free)
+- **Incremental mode** when disk space is limited or VHDX is very large
+
+**Output example:**
+```
+[Auto-Select] Analyzing system conditions...
+  Free space: 7 GB
+  Minimum required: 20 GB
+  VHDX size: 60 GB
+
+[Auto-Select] → **INCREMENTAL MODE** (Limited disk space - safer approach)
+  Reason: Free space ratio (0.35) indicates tight disk space
+```
+
+### 6. Custom VHDX location with lower safety threshold
 
 ```powershell
 .\Shrink-DockerDataVHDX.ps1 -VhdxRelativePath "CustomPath\docker.vhdx" -MinFreeSpaceGB 10
@@ -151,15 +199,15 @@ Incremental mode helps avoid large temporary spikes in host disk usage. Each cyc
 5. **Compacts** the VHDX using Optimize-VHD or diskpart
 6. **Re-measures** host free space and repeats until `MaxCycles` reached or insufficient headroom
 
-**Progress tracking**: Each cycle displays elapsed time, space saved, and overall progress (e.g., "Cycle 3 of 5").
+**Progress tracking**: Each cycle displays elapsed time, space saved, and overall progress (e.g., "Cycle 3 (max 5)"). Note: Shows "(max N)" because actual cycles may be fewer based on available disk space.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Cycle 1: Write 10GB → Compact → Reclaim space              │
-│ Cycle 2: Write 10GB → Compact → Reclaim space              │
-│ Cycle 3: Write 10GB → Compact → Reclaim space              │
-│ ...                                                          │
-└─────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Cycle 1: Write 10GB â†’ Compact â†’ Reclaim space              â”‚
+â”‚ Cycle 2: Write 10GB â†’ Compact â†’ Reclaim space              â”‚
+â”‚ Cycle 3: Write 10GB â†’ Compact â†’ Reclaim space              â”‚
+â”‚ ...                                                          â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -192,13 +240,25 @@ Space saved:        33.2 GB (38.9%)
 
 ## Safety & Notes
 
+* ⚠️ **Interruption risks**: **DO NOT KILL the script during VHDX compaction** (Optimize-VHD or diskpart operations). Killing during this phase can corrupt the VHDX and make Docker unusable. Zero-fill phase is safer to interrupt if absolutely necessary.
+
+* 🐳 **Docker Desktop Protection**: The script actively monitors for Docker Desktop:
+  * **Pre-execution**: Blocks if Docker Desktop is running (requires exclusive VHDX access)
+  * **During compaction**: Monitors every 3-5 seconds for Docker starting
+  * **Critical protection**: Immediately stops compaction if Docker starts to prevent corruption
+  * **Auto-close**: Can force-close Docker Desktop (interactive mode waits for manual close)
+
 * 🔐 **Self-elevation**: Script automatically requests admin privileges when needed via UAC prompt
-* 💾 **Host disk space**: Zero-filling temporarily expands the VHDX. Ensure sufficient free space or use incremental mode
-* 🔒 **Backup first**: Always backup important data before manipulating VHDX files
-* ⚡ **Optimize-VHD vs diskpart**: `Optimize-VHD` (Hyper-V module) is faster and preferred; `diskpart` is used as automatic fallback
-* 🐧 **Minimal environment**: The `docker-desktop` distro is minimal — the script only writes to `/mnt/docker-desktop-disk`, no package installation needed
-* 📊 **Space monitoring**: Script checks host free space and aborts if below `-MinFreeSpaceGB`
-* 🛑 **Docker Desktop impact**: Docker Desktop will be stopped during the process (WSL shutdown required for compaction)
+* ðŸ’¾ **Host disk space**: Zero-filling temporarily expands the VHDX. Ensure sufficient free space or use incremental mode
+* ðŸ”’ **Backup first**: Always backup important data before manipulating VHDX files
+* âš¡ **Optimize-VHD vs diskpart**: `Optimize-VHD` (Hyper-V module) is faster and preferred; `diskpart` is used as automatic fallback
+* ðŸ§ **Minimal environment**: The `docker-desktop` distro is minimal â€” the script only writes to `/mnt/docker-desktop-disk`, no package installation needed
+* ðŸ"Š **Space monitoring**: Script checks host free space and aborts if below `-MinFreeSpaceGB`
+* ðŸ›' **Docker Desktop impact**: Docker Desktop will be stopped during the process (WSL shutdown required for compaction)
+* ðŸ🤖 **Auto-configuration**: When free space is limited (< 10 GB), the script automatically adjusts parameters for safety:
+  * Reduces `MinFreeSpaceGB` to 3-5 GB
+  * Reduces `MaxIncrementalSizeGB` to 2 GB
+  * Warns about tight disk space conditions
 
 ---
 
@@ -216,7 +276,7 @@ Space saved:        33.2 GB (38.9%)
 - Note: `-WhatIf` simulation mode doesn't require admin privileges
 
 ### Optimize-VHD not available
-**Status:** Not an error — the script automatically uses `diskpart` fallback  
+**Status:** Not an error â€” the script automatically uses `diskpart` fallback  
 **To enable Optimize-VHD:** Install Hyper-V PowerShell module:
 ```powershell
 Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-Management-PowerShell
@@ -233,12 +293,12 @@ wsl --list --running
 **Cause:** Insufficient free space for full zero-fill operation  
 **Solution:** 
 - Stop script immediately (Ctrl+C)
-- Use smaller `-IncrementalSizeGB` value (e.g., 5 or 10 GB)
+- Use smaller `-MaxIncrementalSizeGB` value (e.g., 5 or 10 GB)
 - Increase `-MinFreeSpaceGB` threshold for more safety margin
 - Move VHDX to larger drive (requires Docker Desktop reconfiguration)
 
 ### Script hangs during zero-fill
-**Cause:** Normal behavior — zero-filling large amounts of space takes time  
+**Cause:** Normal behavior â€” zero-filling large amounts of space takes time  
 **Expected duration:** Can take 15-60+ minutes depending on disk size and speed  
 **Monitor:** The script shows progress bars and periodic status updates. If you see the progress bar and elapsed time updating, the script is working correctly.
 
@@ -272,6 +332,57 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ---
 
+## Development & Testing
+
+This project includes automated checks to ensure code quality and safety.
+
+### Local Testing
+1. **Static Analysis**: Run the included helper script to check for syntax errors and best practices.
+   ```powershell
+   .\Run-PSScriptAnalyzer.ps1
+   ```
+2. **Simulation**: Always run with `-WhatIf` before committing changes.
+   ```powershell
+   .\Shrink-DockerDataVHDX.ps1 -WhatIf
+   ```
+3. **Manual Checklist**: Refer to [`TEST_CHECKLIST.md`](TEST_CHECKLIST.md) for a step-by-step guide to manually validating the script.
+
+### CI/CD
+A GitHub Actions workflow (`.github/workflows/ps1-test.yml`) automatically runs on every push and pull request to ensure code quality and functionality:
+
+#### Automated Checks:
+1. **PSScriptAnalyzer Linting**
+   - Scans for Errors, Warnings, and Information level issues
+   - Fails build on Error severity issues
+   - Reports all findings for quality tracking
+
+2. **Syntax Validation**
+   - Verifies PowerShell syntax is valid
+   - Prevents broken scripts from being merged
+
+3. **Functional Testing**
+   - Executes `-WhatIf` simulation to ensure script runs without crashing
+   - Tests multiple parameter combinations:
+     * Custom MinFreeSpaceGB values
+     * Incremental mode with different cycle sizes
+     * Force flag behavior
+     * Auto mode with system analysis
+
+4. **Code Quality Checks**
+   - Scans for TODO/FIXME/HACK comments
+   - Reports technical debt for tracking
+
+#### Triggers:
+- Push to `main` branch
+- Pull request against `main` branch
+- Manual trigger via GitHub Actions UI
+
+#### Runner: `windows-latest` (Windows VM)
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full version history and release notes.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -285,4 +396,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Made with ❤️ for Docker Desktop users fighting disk space issues**
+**Made with â¤ï¸ for Docker Desktop users fighting disk space issues**

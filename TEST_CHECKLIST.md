@@ -1,4 +1,4 @@
-# Test checklist — Shrink-DockerDataVHDX.ps1
+﻿# Test checklist â€” Shrink-DockerDataVHDX.ps1
 
 Use this checklist to safely validate the script before using on critical systems.
 
@@ -15,6 +15,10 @@ Use this checklist to safely validate the script before using on critical system
   ```powershell
   wsl -l -v
   ```
+- [ ] **Docker Desktop Status**: **CLOSE Docker Desktop before running the script**. The script will check and block if Docker is running.
+- [ ] **⚠️ CRITICAL WARNING**: **DO NOT KILL/INTERRUPT the script during VHDX compaction** (the Optimize-VHD or diskpart phase). This can corrupt the VHDX and make Docker unusable. Let the script complete fully.
+- [ ] **⚠️ DO NOT START Docker Desktop while script is running**. The script monitors for Docker starting during compaction and will abort with a critical error if detected.
+
 
 ## 3. Simulation Mode (`-WhatIf`)
 - [ ] **Basic Simulation**:
@@ -25,7 +29,7 @@ Use this checklist to safely validate the script before using on critical system
 
 - [ ] **Incremental Simulation**:
   ```powershell
-  .\Shrink-DockerDataVHDX.ps1 -WhatIf -IncrementalSizeGB 5
+  .\Shrink-DockerDataVHDX.ps1 -WhatIf -MaxIncrementalSizeGB 5
   ```
   *Expected result: Plan shows "Incremental mode" with 5GB cycle size.*
 
@@ -36,14 +40,14 @@ Use this checklist to safely validate the script before using on critical system
   ```
   *Expected result:
   1. Self-elevates (asking for Admin rights).
-  2. Displays a menu with options (Full, Incremental, Simulation, Abort).
-  3. Select option "3" (Simulation) -> Script should display plan and exit.*
+  2. Displays a menu with options (Simulate Inc/Full, Incremental, Full, Abort).
+  3. Select option "1" or "2" (Simulation) -> Script should display plan and exit.*
 
 ## 5. Functional Test (Incremental Mode)
 *Recommended for first real run*
 - [ ] **Run with limits**:
   ```powershell
-  .\Shrink-DockerDataVHDX.ps1 -IncrementalSizeGB 5 -MaxCycles 2
+  .\Shrink-DockerDataVHDX.ps1 -MaxIncrementalSizeGB 5 -MaxCycles 2
   ```
   *Expected result:*
   - *Admin prompt appears.*
